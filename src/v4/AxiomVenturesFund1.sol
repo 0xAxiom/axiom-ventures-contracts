@@ -612,7 +612,7 @@ contract AxiomVenturesFund1 is
         
         string memory json = string(abi.encodePacked(
             '{"name":"Axiom Ventures Fund 1 #', tokenId.toString(),
-            '","description":"LP slip representing 1/200th of Axiom Ventures Fund 1. Entitles holder to pro-rata share of 20 AI agent tokens at $100K implied FDV.',
+            '","description":"LP slip representing 1/200th of Axiom Ventures Fund 1. Entitles holder to pro-rata share of 10 AI agent tokens at $100K implied FDV.',
             tradingEnabled ? '' : ' Trading locked until sold out.',
             '","image":"data:image/svg+xml;base64,', Base64.encode(bytes(svg)), '",',
             '"attributes":[',
@@ -739,7 +739,7 @@ contract AxiomVenturesFund1 is
             '<text fill="#737373" font-family="monospace" font-size="26" x="100" y="1180">1 of 200</text>',
             '<text fill="#737373" font-family="monospace" font-size="26" x="100" y="1225">$1,010 USDC</text>',
             '<text fill="#525252" font-family="monospace" font-size="26" text-anchor="end" x="1100" y="1180">$100K FDV Entry</text>',
-            '<text fill="#525252" font-family="monospace" font-size="26" text-anchor="end" x="1100" y="1225">20 AI Agents</text>',
+            '<text fill="#525252" font-family="monospace" font-size="26" text-anchor="end" x="1100" y="1225">10 AI Agents</text>',
             '<rect x="100" y="1280" width="180" height="40" rx="8" fill="', statusColor, '" fill-opacity="0.15"/>',
             '<text fill="', statusColor, '" font-family="monospace" font-size="22" font-weight="600" x="120" y="1308">', tradingStatus, '</text>',
             '<circle cx="1050" cy="120" r="32" fill="none" stroke="#84cc16" stroke-width="2"/>',
