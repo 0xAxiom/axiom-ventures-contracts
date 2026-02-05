@@ -97,6 +97,13 @@ contract FundTransparencyTest is Test {
     }
 
     function _setupPitchMocks() internal {
+        // Mock nextPitchId (used by getAgentPitches to scan pitch range)
+        vm.mockCall(
+            mockPitchRegistry,
+            abi.encodeWithSignature("nextPitchId()"),
+            abi.encode(uint256(3)) // pitches 1 and 2 exist
+        );
+        
         // Mock PitchRegistry responses
         vm.mockCall(
             mockPitchRegistry,
@@ -108,6 +115,24 @@ contract FundTransparencyTest is Test {
             mockPitchRegistry,
             abi.encodeWithSelector(PitchRegistry.pitchExists.selector),
             abi.encode(true)
+        );
+        
+        // Mock getPitchesBySubmitter for agent1 — returns pitch 1
+        uint256[] memory agent1Pitches = new uint256[](1);
+        agent1Pitches[0] = PITCH_ID_1;
+        vm.mockCall(
+            mockPitchRegistry,
+            abi.encodeWithSelector(PitchRegistry.getPitchesBySubmitter.selector, agent1),
+            abi.encode(agent1Pitches)
+        );
+
+        // Mock getPitchesBySubmitter for agent2 — returns pitch 2
+        uint256[] memory agent2Pitches = new uint256[](1);
+        agent2Pitches[0] = PITCH_ID_2;
+        vm.mockCall(
+            mockPitchRegistry,
+            abi.encodeWithSelector(PitchRegistry.getPitchesBySubmitter.selector, agent2),
+            abi.encode(agent2Pitches)
         );
         
         // Mock pitch data
@@ -166,12 +191,12 @@ contract FundTransparencyTest is Test {
         // Mock escrow 1 data
         vm.mockCall(
             mockEscrow1,
-            abi.encodeWithSignature("getTotalAmount()"),
+            abi.encodeWithSignature("totalAmount()"),
             abi.encode(FUNDING_REQUEST_1)
         );
         vm.mockCall(
             mockEscrow1,
-            abi.encodeWithSignature("getReleasedAmount()"),
+            abi.encodeWithSignature("totalReleased()"),
             abi.encode(30000e6) // 30% released
         );
         vm.mockCall(
@@ -203,12 +228,12 @@ contract FundTransparencyTest is Test {
         // Mock escrow 2 data
         vm.mockCall(
             mockEscrow2,
-            abi.encodeWithSignature("getTotalAmount()"),
+            abi.encodeWithSignature("totalAmount()"),
             abi.encode(FUNDING_REQUEST_2)
         );
         vm.mockCall(
             mockEscrow2,
-            abi.encodeWithSignature("getReleasedAmount()"),
+            abi.encodeWithSignature("totalReleased()"),
             abi.encode(50000e6) // 25% released
         );
         vm.mockCall(

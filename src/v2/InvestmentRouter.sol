@@ -305,6 +305,8 @@ contract InvestmentRouter is Ownable, ReentrancyGuard {
 
     /**
      * @notice Get pitches submitted by an agent
+     * @dev Searches all funded pitches + scans pitchToAgent mapping
+     *      Router is the msg.sender in PitchRegistry, so we can't use getPitchesBySubmitter(agent)
      * @param agentId The agent NFT ID
      * @return pitchIds Array of pitch IDs submitted by this agent
      */
@@ -313,23 +315,23 @@ contract InvestmentRouter is Ownable, ReentrancyGuard {
         view 
         returns (uint256[] memory pitchIds) 
     {
-        address agent = agentRegistry.ownerOf(agentId);
-        uint256[] memory allPitches = pitchRegistry.getPitchesBySubmitter(agent);
+        // First pass: count pitches for this agent
+        // Use nextPitchId to know the range (pitches are 1-indexed)
+        uint256 totalPitches = pitchRegistry.nextPitchId() - 1;
+        uint256 agentPitchCount = 0;
         
-        // Count pitches submitted via router
-        uint256 routerPitchCount = 0;
-        for (uint256 i = 0; i < allPitches.length; i++) {
-            if (pitchToAgent[allPitches[i]] == agentId) {
-                routerPitchCount++;
+        for (uint256 i = 1; i <= totalPitches; i++) {
+            if (pitchToAgent[i] == agentId) {
+                agentPitchCount++;
             }
         }
         
-        // Populate result array
-        pitchIds = new uint256[](routerPitchCount);
+        // Second pass: populate result array
+        pitchIds = new uint256[](agentPitchCount);
         uint256 currentIndex = 0;
-        for (uint256 i = 0; i < allPitches.length; i++) {
-            if (pitchToAgent[allPitches[i]] == agentId) {
-                pitchIds[currentIndex] = allPitches[i];
+        for (uint256 i = 1; i <= totalPitches; i++) {
+            if (pitchToAgent[i] == agentId) {
+                pitchIds[currentIndex] = i;
                 currentIndex++;
             }
         }

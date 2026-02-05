@@ -20,6 +20,8 @@ contract AgentRegistryTest is Test {
     address public agent2 = makeAddr("agent2");
     address public nonAgent = makeAddr("nonAgent");
     
+    address constant USDC_ADDRESS = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+    
     string constant METADATA_URI = "ipfs://QmTestHash123";
     string constant METADATA_URI_2 = "ipfs://QmTestHash456";
     
@@ -33,30 +35,16 @@ contract AgentRegistryTest is Test {
         // Deploy mock USDC
         mockUSDC = new ERC20Mock();
         
-        // Set up balances
-        mockUSDC.mint(agent1, 1000e6);
-        mockUSDC.mint(agent2, 1000e6);
+        // Deploy ERC20Mock code at the mainnet USDC address
+        vm.etch(USDC_ADDRESS, address(mockUSDC).code);
+        
+        // Set up balances at USDC address
+        ERC20Mock(USDC_ADDRESS).mint(agent1, 1000e6);
+        ERC20Mock(USDC_ADDRESS).mint(agent2, 1000e6);
         
         // Deploy registry
         vm.prank(owner);
         registry = new AgentRegistry(owner);
-        
-        // Replace USDC constant for testing
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IERC20.transfer.selector),
-            abi.encode(true)
-        );
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IERC20.transferFrom.selector),
-            abi.encode(true)
-        );
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IERC20.balanceOf.selector),
-            abi.encode(0)
-        );
     }
 
     function testInitialState() public view {
@@ -86,16 +74,9 @@ contract AgentRegistryTest is Test {
         vm.prank(owner);
         registry.setRegistrationFee(REGISTRATION_FEE);
         
-        // Agent approves USDC
+        // Agent approves USDC at the mainnet address
         vm.prank(agent1);
-        mockUSDC.approve(address(registry), REGISTRATION_FEE);
-        
-        // Mock the transferFrom call
-        vm.mockCall(
-            address(mockUSDC),
-            abi.encodeWithSelector(IERC20.transferFrom.selector, agent1, address(registry), REGISTRATION_FEE),
-            abi.encode(true)
-        );
+        ERC20Mock(USDC_ADDRESS).approve(address(registry), REGISTRATION_FEE);
         
         vm.prank(agent1);
         uint256 agentId = registry.registerAgent(METADATA_URI);
@@ -168,25 +149,18 @@ contract AgentRegistryTest is Test {
     function testWithdrawFees() public {
         uint256 balance = 500e6;
         
-        // Mock balance
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IERC20.balanceOf.selector, address(registry)),
-            abi.encode(balance)
-        );
-        
-        // Mock transfer
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IERC20.transfer.selector, owner, balance),
-            abi.encode(true)
-        );
+        // Mint tokens to registry address to simulate collected fees
+        ERC20Mock(USDC_ADDRESS).mint(address(registry), balance);
         
         vm.prank(owner);
         vm.expectEmit(false, false, false, true);
         emit FeesWithdrawn(balance, owner);
         
         registry.withdrawFees(owner);
+        
+        // Check that the balance was transferred to owner
+        assertEq(ERC20Mock(USDC_ADDRESS).balanceOf(owner), balance);
+        assertEq(ERC20Mock(USDC_ADDRESS).balanceOf(address(registry)), 0);
     }
 
     function testTokenNotTransferable() public {

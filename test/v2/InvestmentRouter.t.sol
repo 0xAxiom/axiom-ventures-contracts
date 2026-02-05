@@ -328,15 +328,11 @@ contract InvestmentRouterTest is Test {
         vm.prank(agent1);
         router.submitPitch(AGENT_ID_1, IPFS_HASH, "Pitch 2", PITCH_DESCRIPTION, FUNDING_REQUEST);
         
-        // Mock getPitchesBySubmitter to return both pitches
-        uint256[] memory submitterPitches = new uint256[](2);
-        submitterPitches[0] = PITCH_ID_1;
-        submitterPitches[1] = PITCH_ID_2;
-        
+        // Mock nextPitchId (getAgentPitches now scans pitchToAgent mapping)
         vm.mockCall(
             mockPitchRegistry,
-            abi.encodeWithSelector(PitchRegistry.getPitchesBySubmitter.selector, agent1),
-            abi.encode(submitterPitches)
+            abi.encodeWithSignature("nextPitchId()"),
+            abi.encode(uint256(3)) // pitches 1 and 2 exist
         );
         
         uint256[] memory agentPitches = router.getAgentPitches(AGENT_ID_1);
