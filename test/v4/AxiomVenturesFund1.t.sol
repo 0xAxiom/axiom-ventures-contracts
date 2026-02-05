@@ -162,6 +162,39 @@ contract AxiomVenturesFund1Test is Test {
         vm.stopPrank();
     }
     
+    function test_MaxPerWallet() public {
+        // Alice can deposit up to 20
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 25 * SLIP_PRICE);
+        fund.deposit(20);
+        assertEq(fund.slipsMintedBy(alice), 20);
+        
+        // 21st should fail
+        vm.expectRevert(AxiomVenturesFund1.ExceedsMaxPerWallet.selector);
+        fund.deposit(1);
+        vm.stopPrank();
+    }
+    
+    function test_MaxPerWalletMultipleDeposits() public {
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 25 * SLIP_PRICE);
+        
+        // Deposit in batches
+        fund.deposit(10);
+        assertEq(fund.slipsMintedBy(alice), 10);
+        
+        fund.deposit(5);
+        assertEq(fund.slipsMintedBy(alice), 15);
+        
+        fund.deposit(5);
+        assertEq(fund.slipsMintedBy(alice), 20);
+        
+        // Now at limit, can't deposit more
+        vm.expectRevert(AxiomVenturesFund1.ExceedsMaxPerWallet.selector);
+        fund.deposit(1);
+        vm.stopPrank();
+    }
+    
     /*//////////////////////////////////////////////////////////////
                            TRADING LOCK
     //////////////////////////////////////////////////////////////*/
@@ -182,18 +215,23 @@ contract AxiomVenturesFund1Test is Test {
     }
     
     function test_TradingEnabledOnSellout() public {
-        // Deposit all 200 slips
-        vm.startPrank(alice);
-        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 200 * SLIP_PRICE);
-        fund.deposit(200);
-        vm.stopPrank();
+        // Deposit all 200 slips using multiple wallets (max 20 per wallet)
+        for (uint i = 0; i < 10; i++) {
+            address depositor = address(uint160(0x1000 + i));
+            deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), depositor, 20 * SLIP_PRICE);
+            vm.startPrank(depositor);
+            IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 20 * SLIP_PRICE);
+            fund.deposit(20);
+            vm.stopPrank();
+        }
         
         assertEq(fund.tradingEnabled(), true);
         assertEq(fund.totalMinted(), 200);
         
         // Now transfer should work
-        vm.prank(alice);
-        fund.transferFrom(alice, bob, 0);
+        address firstDepositor = address(uint160(0x1000));
+        vm.prank(firstDepositor);
+        fund.transferFrom(firstDepositor, bob, 0);
         assertEq(fund.ownerOf(0), bob);
     }
     
@@ -413,11 +451,15 @@ contract AxiomVenturesFund1Test is Test {
     }
     
     function test_NewOwnerCanClaimAfterTransfer() public {
-        // Sell out to enable trading
-        vm.startPrank(alice);
-        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 200 * SLIP_PRICE);
-        fund.deposit(200);
-        vm.stopPrank();
+        // Sell out to enable trading using multiple wallets (max 20 per wallet)
+        for (uint i = 0; i < 10; i++) {
+            address depositor = address(uint160(0x2000 + i));
+            deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), depositor, 20 * SLIP_PRICE);
+            vm.startPrank(depositor);
+            IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 20 * SLIP_PRICE);
+            fund.deposit(20);
+            vm.stopPrank();
+        }
         
         // Setup tokens
         agentToken1.mint(address(clankerVault), 200e18);
@@ -426,9 +468,10 @@ contract AxiomVenturesFund1Test is Test {
         fund.addAgentToken(address(agentToken1));
         fund.claimFromClanker(address(agentToken1));
         
-        // Alice transfers slip #0 to Bob
-        vm.prank(alice);
-        fund.transferFrom(alice, bob, 0);
+        // First depositor transfers slip #0 to Bob
+        address firstDepositor = address(uint160(0x2000));
+        vm.prank(firstDepositor);
+        fund.transferFrom(firstDepositor, bob, 0);
         
         // Bob can now claim
         vm.prank(bob);

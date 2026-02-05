@@ -66,6 +66,9 @@ contract AxiomVenturesFund1 is
     
     /// @notice Maximum tokens to process in one batch
     uint256 public constant MAX_BATCH_SIZE = 50;
+    
+    /// @notice Maximum slips per wallet (10% of fund)
+    uint256 public constant MAX_PER_WALLET = 20;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -115,9 +118,12 @@ contract AxiomVenturesFund1 is
     
     /// @notice Total tokens claimed per slip per agent token
     mapping(uint256 => mapping(address => uint256)) public totalClaimed;
+    
+    /// @notice Slips minted per wallet (for max per wallet enforcement)
+    mapping(address => uint256) public slipsMintedBy;
 
     /// @notice Storage gap for future upgrades
-    uint256[30] private __gap;
+    uint256[29] private __gap;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -145,6 +151,7 @@ contract AxiomVenturesFund1 is
     error ContractPaused();
     error TradingNotEnabled();
     error SoldOut();
+    error ExceedsMaxPerWallet();
     error InvalidCount();
     error NotSlipOwner();
     error NothingToClaim();
@@ -225,6 +232,7 @@ contract AxiomVenturesFund1 is
         if (!depositsOpen) revert DepositsNotOpen();
         if (count == 0) revert InvalidCount();
         if (totalMinted + count > MAX_SUPPLY) revert SoldOut();
+        if (slipsMintedBy[msg.sender] + count > MAX_PER_WALLET) revert ExceedsMaxPerWallet();
 
         uint256 grossAmount = count * SLIP_PRICE;
         uint256 feeAmount = (grossAmount * DEPOSIT_FEE_BPS) / 10000;
@@ -238,6 +246,8 @@ contract AxiomVenturesFund1 is
             _safeMintSlip(msg.sender);
             unchecked { ++i; }
         }
+        
+        slipsMintedBy[msg.sender] += count;
 
         emit Deposited(msg.sender, count, firstSlipId, feeAmount);
         
