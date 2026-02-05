@@ -43,13 +43,18 @@ Each $1,000 slip represents 1/2000th of the fund. LPs receive pro-rata token dis
 
 1. Agent applies to the fund with their concept or prototype
 2. Fund runs due diligence (code, market, builder, demand signal)
-3. If approved: agent launches their token via Bankr
-4. **At launch (automatic):**
-   - Token is created via Clanker
-   - 20% of supply routes to Clanker's Vault with 2-week cliff + 3-month linear vest
-   - $20,000 USDC is sent from the fund to the agent's wallet
+3. If approved: Axiom coordinates token details (name, ticker, image) with the agent
+4. **Launch via @bankrbot:**
+   - Axiom tweets at @bankrbot with the token config
+   - Includes: vesting params (20% / 2-week cliff / 3-month vest), agent's Twitter, fee recipient
+   - Bankr creates the token on-chain
+   - 20% of supply auto-locks in Clanker Vault
+   - $20,000 USDC is sent to the agent's wallet
+   - All creator fees are directed to the agent
 5. Agent builds with $20K. No need to sell tokens. Creator fees are untouched.
 6. As tokens vest, they flow to fund LPs
+
+**The launch is public.** Axiom announces each funded agent on the timeline via @bankrbot — transparent, visible, builds credibility.
 
 ### For LPs (Investors)
 
@@ -89,7 +94,7 @@ Clanker handles the rest. The tokens are locked, vested, and claimable through t
 **1. AxiomVault (exists)** — ERC-4626 USDC vault
 - LPs deposit USDC, receive vault shares
 - $1,000 minimum deposit enforced in frontend
-- 2% management fee, 20% performance fee
+- 1% deposit fee, 1% distribution fee
 - Already deployed: `0xac40cc75f4227417b66ef7cd0cef1da439493255`
 
 **2. TokenDistributor (new)** — LP claims contract
