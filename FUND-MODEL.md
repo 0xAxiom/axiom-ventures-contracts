@@ -31,9 +31,9 @@ Axiom Ventures is an AI agent seed fund on Base. We invest $20,000 into new AI a
 | Distribution fee | 1% (on token claims) |
 | Returns | Pro-rata share of vested agent tokens |
 
-Each $1,000 slip represents 1/2000th of the fund. LPs receive pro-rata token distributions from all 100 agent investments as they vest. 1% deposit fee is taken upfront ($10 per slip), 1% distribution fee on token claims.
+Each $1,000 slip represents 1/2000th of the fund. LPs receive pro-rata token distributions from all 100 agent investments as they vest. 1% of deposits become fund manager LP slips (aligned incentives), 1% distribution fee on token claims.
 
-**Example:** 1 slip = $1,000 ($990 after deposit fee) = exposure to 100 agents. When claiming tokens, 1% of the tokens go to the fund (e.g., claim 5,000 tokens → 50 tokens fee → 4,950 tokens received).
+**Example:** 1 slip = $1,000 ($10 becomes fund manager slips, $990 buys LP shares) = exposure to 100 agents. When claiming tokens, 1% distribution fee applies (e.g., claim 5,000 tokens → 50 tokens fee → 4,950 tokens received).
 
 ---
 
@@ -94,7 +94,7 @@ Clanker handles the rest. The tokens are locked, vested, and claimable through t
 **1. AxiomVault (exists)** — ERC-4626 USDC vault
 - LPs deposit USDC, receive vault shares
 - $1,000 minimum deposit enforced in frontend
-- 1% deposit fee, 1% distribution fee
+- 1% of deposits → fund manager LP slips, 1% distribution fee
 - Already deployed: `0xac40cc75f4227417b66ef7cd0cef1da439493255`
 
 **2. TokenDistributor (new)** — LP claims contract
@@ -187,7 +187,7 @@ LP deposits USDC ($1,000 slips)
 | Party | What They Get | What Aligns Them |
 |-------|--------------|-----------------|
 | **Agent** | $20K USDC for infra, keeps creator fees, no token selling | Succeeds = token moons = everyone wins |
-| **Fund** | 1% deposit fee + 1% of all token distributions | Only profits meaningfully if agents succeed |
+| **Fund** | 1% of deposits as LP slips + 1% of all token distributions | Invested alongside LPs, only profits if agents succeed |
 | **LPs** | Diversified basket of 100 vetted agent tokens | Pro-rata exposure at seed pricing |
 
 - Agents don't dump (they keep their tokens + fees)
@@ -207,7 +207,7 @@ LP deposits USDC ($1,000 slips)
 
 **That's it.** No annual fees, no performance fees, no high water marks.
 
-- **1% deposit fee:** LP deposits $1,000, $10 goes to fund operations, $990 goes into the vault. On $2M raised, that's $20K for ops.
+- **1% deposit → fund manager slips:** LP deposits $1,000, $10 becomes fund manager LP slips (aligned incentives), $990 buys LP shares. Fund managers are invested alongside LPs.
 - **1% distribution fee:** When LPs claim vested agent tokens, 1% is retained by the fund. Fund's upside scales with portfolio performance.
 
 Simple, transparent, aligned.
@@ -243,11 +243,11 @@ Simple, transparent, aligned.
 
 ---
 
-## Open Questions for Discussion
+## Resolved Decisions
 
-1. **Slip denomination:** Is $1,000 the right minimum? Too high/low?
-2. **Vesting parameters:** 2-week cliff + 3-month vest — should these be adjustable per deal?
-3. **USDC deployment:** Should the $20K come directly from the vault or from the Safe?
-4. **Claim frequency:** How often should the fund claim vested tokens and make them available to LPs?
-5. **Deal pacing:** How many agents per week/month? All 100 at once or phased?
-6. **Bankr integration:** Does Bankr support setting custom ClankerVault extension params at launch?
+1. **Slip denomination:** $1,000 — accessible while limiting LP count to manageable 2,000
+2. **Vesting parameters:** 2-week cliff + 3-month vest — standard Bankr config
+3. **USDC deployment:** From Safe multi-sig (2/3) for oversight
+4. **Claim frequency:** As tokens vest, fund claims and makes available to LPs
+5. **Deal pacing:** Phased — agents as they pass DD, not all at once
+6. **Bankr integration:** Yes — extensionBps, lockupDuration, vestingDuration supported
