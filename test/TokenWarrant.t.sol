@@ -311,6 +311,67 @@ contract TokenWarrantTest is Test {
         warrant.cancelWarrant(warrantId);
     }
 
+    // ═══ Seize Tokens Tests ═══
+
+    function test_SeizeTokens() public {
+        vm.prank(owner);
+        warrantId = warrant.createWarrant(PITCH_ID, address(agentToken18), TOKEN_AMOUNT_18, SNAPSHOT_PRICE, DISCOUNT_BPS, block.timestamp + EXERCISE_DEADLINE, agent, beneficiary);
+        
+        vm.prank(agent);
+        warrant.depositTokens(warrantId);
+
+        uint256 beneficiaryBalBefore = agentToken18.balanceOf(beneficiary);
+
+        vm.prank(owner);
+        warrant.seizeTokens(warrantId);
+
+        // Tokens go to beneficiary (fund), NOT back to agent
+        assertEq(agentToken18.balanceOf(beneficiary), beneficiaryBalBefore + TOKEN_AMOUNT_18);
+        // Warrant contract should have zero tokens left
+        assertEq(agentToken18.balanceOf(address(warrant)), 0);
+        
+        TokenWarrant.Warrant memory w = warrant.getWarrant(warrantId);
+        assertTrue(w.cancelled);
+    }
+
+    function test_SeizeTokens_RevertNotOwner() public {
+        vm.prank(owner);
+        warrantId = warrant.createWarrant(PITCH_ID, address(agentToken18), TOKEN_AMOUNT_18, SNAPSHOT_PRICE, DISCOUNT_BPS, block.timestamp + EXERCISE_DEADLINE, agent, beneficiary);
+        
+        vm.prank(agent);
+        warrant.depositTokens(warrantId);
+
+        vm.expectRevert();
+        vm.prank(agent);
+        warrant.seizeTokens(warrantId);
+    }
+
+    function test_SeizeTokens_RevertNotDeposited() public {
+        vm.prank(owner);
+        warrantId = warrant.createWarrant(PITCH_ID, address(agentToken18), TOKEN_AMOUNT_18, SNAPSHOT_PRICE, DISCOUNT_BPS, block.timestamp + EXERCISE_DEADLINE, agent, beneficiary);
+
+        vm.expectRevert(TokenWarrant.TokensNotDeposited.selector);
+        vm.prank(owner);
+        warrant.seizeTokens(warrantId);
+    }
+
+    function test_SeizeTokens_RevertAlreadyExercised() public {
+        vm.prank(owner);
+        warrantId = warrant.createWarrant(PITCH_ID, address(agentToken18), TOKEN_AMOUNT_18, SNAPSHOT_PRICE, DISCOUNT_BPS, block.timestamp + EXERCISE_DEADLINE, agent, beneficiary);
+        
+        vm.prank(agent);
+        warrant.depositTokens(warrantId);
+        
+        vm.prank(beneficiary);
+        warrant.exerciseWarrant(warrantId);
+
+        vm.expectRevert(TokenWarrant.WarrantAlreadyExercised.selector);
+        vm.prank(owner);
+        warrant.seizeTokens(warrantId);
+    }
+
+    // ═══ Exercise Cost Tests ═══
+
     function test_GetExerciseCost_18Decimals() public {
         vm.prank(owner);
         warrantId = warrant.createWarrant(PITCH_ID, address(agentToken18), TOKEN_AMOUNT_18, SNAPSHOT_PRICE, DISCOUNT_BPS, block.timestamp + EXERCISE_DEADLINE, agent, beneficiary);

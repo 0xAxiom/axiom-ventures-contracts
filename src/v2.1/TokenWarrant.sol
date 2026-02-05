@@ -68,6 +68,7 @@ contract TokenWarrant is Ownable, ReentrancyGuard {
     event TokensDeposited(uint256 indexed warrantId, address indexed agent, uint256 tokenAmount);
     event WarrantExercised(uint256 indexed warrantId, address indexed beneficiary, uint256 usdcPaid, uint256 tokensReceived);
     event WarrantCancelled(uint256 indexed warrantId, uint256 tokensReturned);
+    event TokensSeized(uint256 indexed warrantId, address indexed beneficiary, uint256 tokensSeized);
 
     error InvalidDiscountBps();
     error InvalidExerciseDeadline();
@@ -223,7 +224,8 @@ contract TokenWarrant is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Owner cancels a warrant, returning tokens to agent if deposited
+     * @notice Owner cancels a warrant gracefully (e.g., deal falls through before funding)
+     * @dev Returns deposited tokens to agent. Use seizeTokens() for milestone failures.
      * @param warrantId The ID of the warrant to cancel
      */
     function cancelWarrant(uint256 warrantId) 
@@ -245,6 +247,30 @@ contract TokenWarrant is Ownable, ReentrancyGuard {
         warrant.cancelled = true;
 
         emit WarrantCancelled(warrantId, tokensReturned);
+    }
+
+    /**
+     * @notice Owner seizes tokens on milestone failure — tokens go to beneficiary (fund), not agent
+     * @dev Use this when milestones are missed and escrow is clawed back. Tokens are penalty/compensation.
+     * @param warrantId The ID of the warrant to seize
+     */
+    function seizeTokens(uint256 warrantId) 
+        external 
+        onlyOwner 
+        nonReentrant 
+        validWarrant(warrantId) 
+    {
+        Warrant storage warrant = warrants[warrantId];
+        
+        if (warrant.exercised) revert WarrantAlreadyExercised();
+        if (!warrant.deposited) revert TokensNotDeposited();
+        if (warrant.cancelled) revert WarrantAlreadyCancelled();
+
+        warrant.cancelled = true;
+
+        IERC20(warrant.token).safeTransfer(warrant.beneficiary, warrant.tokenAmount);
+
+        emit TokensSeized(warrantId, warrant.beneficiary, warrant.tokenAmount);
     }
 
     /**
