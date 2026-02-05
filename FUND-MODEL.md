@@ -33,7 +33,7 @@ Axiom Ventures is an AI agent seed fund on Base. We invest $20,000 into new AI a
 
 Each $1,000 slip represents 1/2000th of the fund. LPs receive pro-rata token distributions from all 100 agent investments as they vest. 1% deposit fee is taken upfront ($10 per slip), 1% distribution fee on token claims.
 
-**Example:** 1 slip = $1,000 ($990 after deposit fee) = exposure to 100 agents. If the average agent hits $500K market cap (5x from $100K entry), your slip's token value = ~$4,950 (after 1% distribution fee).
+**Example:** 1 slip = $1,000 ($990 after deposit fee) = exposure to 100 agents. When claiming tokens, 1% of the tokens go to the fund (e.g., claim 5,000 tokens → 50 tokens fee → 4,950 tokens received).
 
 ---
 
