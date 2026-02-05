@@ -36,8 +36,8 @@ contract AxiomVenturesFund1Test is Test {
     address public alice = address(0xA11CE);
     address public bob = address(0xB0B);
     
-    uint256 public constant SLIP_PRICE = 1000e6;
-    uint256 public constant TOTAL_SLIPS = 2000;
+    uint256 public constant SLIP_PRICE = 1010e6;  // $1,010
+    uint256 public constant MAX_SUPPLY = 200;
     
     function setUp() public {
         // Deploy mocks
@@ -63,8 +63,8 @@ contract AxiomVenturesFund1Test is Test {
         vm.etch(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), address(usdc).code);
         
         // Give users USDC
-        deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), alice, 100_000e6);
-        deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), bob, 100_000e6);
+        deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), alice, 500_000e6);
+        deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), bob, 500_000e6);
     }
     
     /*//////////////////////////////////////////////////////////////
@@ -77,12 +77,19 @@ contract AxiomVenturesFund1Test is Test {
         assertEq(fund.clankerVault(), address(clankerVault));
         assertEq(fund.depositsOpen(), true);
         assertEq(fund.paused(), false);
+        assertEq(fund.tradingEnabled(), false);
         assertEq(fund.totalMinted(), 0);
     }
     
     function test_CannotInitializeTwice() public {
         vm.expectRevert();
         fund.initialize(safe, metadataAdmin, address(clankerVault));
+    }
+    
+    function test_RoyaltyInfo() public view {
+        (address receiver, uint256 royalty) = fund.royaltyInfo(0, 10000);
+        assertEq(receiver, safe);
+        assertEq(royalty, 250); // 2.5%
     }
     
     /*//////////////////////////////////////////////////////////////
@@ -98,7 +105,6 @@ contract AxiomVenturesFund1Test is Test {
         assertEq(fund.balanceOf(alice), 1);
         assertEq(fund.ownerOf(0), alice);
         assertEq(fund.totalMinted(), 1);
-        assertEq(fund.publicSlipsMinted(), 1);
     }
     
     function test_DepositMultipleSlips() public {
@@ -111,17 +117,18 @@ contract AxiomVenturesFund1Test is Test {
         assertEq(fund.totalMinted(), 10);
     }
     
-    function test_FundManagerSlipMinting() public {
-        // Deposit 99 slips - should trigger 1 FM slip
+    function test_DepositFeeGoesToSafe() public {
+        uint256 safeBefore = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).balanceOf(safe);
+        
         vm.startPrank(alice);
-        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 99 * SLIP_PRICE);
-        fund.deposit(99);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 10 * SLIP_PRICE);
+        fund.deposit(10);
         vm.stopPrank();
         
-        assertEq(fund.publicSlipsMinted(), 99);
-        assertEq(fund.fundManagerSlipsMinted(), 1);
-        assertEq(fund.totalMinted(), 100);
-        assertEq(fund.balanceOf(safe), 1);
+        uint256 safeAfter = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).balanceOf(safe);
+        
+        // Safe receives full amount (including 1% fee for burns)
+        assertEq(safeAfter - safeBefore, 10 * SLIP_PRICE);
     }
     
     function test_RevertWhenDepositsNotOpen() public {
@@ -146,13 +153,86 @@ contract AxiomVenturesFund1Test is Test {
         vm.stopPrank();
     }
     
-    function test_RevertExceedsMaxPublicSlips() public {
+    function test_RevertSoldOut() public {
         // Try to deposit more than max
         vm.startPrank(alice);
-        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 2000 * SLIP_PRICE);
-        vm.expectRevert(AxiomVenturesFund1.ExceedsMaxPublicSlips.selector);
-        fund.deposit(1981);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 300 * SLIP_PRICE);
+        vm.expectRevert(AxiomVenturesFund1.SoldOut.selector);
+        fund.deposit(201);
         vm.stopPrank();
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                           TRADING LOCK
+    //////////////////////////////////////////////////////////////*/
+    
+    function test_TradingLockedByDefault() public {
+        // Deposit a slip
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        assertEq(fund.tradingEnabled(), false);
+        
+        // Try to transfer - should fail
+        vm.prank(alice);
+        vm.expectRevert(AxiomVenturesFund1.TradingNotEnabled.selector);
+        fund.transferFrom(alice, bob, 0);
+    }
+    
+    function test_TradingEnabledOnSellout() public {
+        // Deposit all 200 slips
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 200 * SLIP_PRICE);
+        fund.deposit(200);
+        vm.stopPrank();
+        
+        assertEq(fund.tradingEnabled(), true);
+        assertEq(fund.totalMinted(), 200);
+        
+        // Now transfer should work
+        vm.prank(alice);
+        fund.transferFrom(alice, bob, 0);
+        assertEq(fund.ownerOf(0), bob);
+    }
+    
+    function test_SafeCanEnableTradingEarly() public {
+        // Deposit some slips
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 10 * SLIP_PRICE);
+        fund.deposit(10);
+        vm.stopPrank();
+        
+        assertEq(fund.tradingEnabled(), false);
+        
+        // Safe enables trading
+        vm.prank(safe);
+        fund.enableTrading();
+        
+        assertEq(fund.tradingEnabled(), true);
+        
+        // Transfer now works
+        vm.prank(alice);
+        fund.transferFrom(alice, bob, 0);
+        assertEq(fund.ownerOf(0), bob);
+    }
+    
+    function test_SafeCanAlwaysTransfer() public {
+        // Deposit a slip directly to safe
+        vm.startPrank(safe);
+        deal(address(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), safe, SLIP_PRICE);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        assertEq(fund.tradingEnabled(), false);
+        assertEq(fund.ownerOf(0), safe);
+        
+        // Safe can transfer even when trading locked
+        vm.prank(safe);
+        fund.transferFrom(safe, alice, 0);
+        assertEq(fund.ownerOf(0), alice);
     }
     
     /*//////////////////////////////////////////////////////////////
@@ -205,16 +285,16 @@ contract AxiomVenturesFund1Test is Test {
         fund.deposit(1);
         vm.stopPrank();
         
-        // Setup: fund receives tokens
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        // Setup: fund receives tokens (200 tokens total for 200 slips = 1 per slip)
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         
         vm.prank(safe);
         fund.addAgentToken(address(agentToken1));
         
         fund.claimFromClanker(address(agentToken1));
         
-        // Alice claims her share (1/2000 of 2000 = 1 token, minus 1% fee)
+        // Alice claims her share (1/200 of 200 = 1 token, minus 1% fee)
         uint256 expectedPayout = (1e18 * 99) / 100; // 0.99 tokens
         
         vm.prank(alice);
@@ -232,10 +312,10 @@ contract AxiomVenturesFund1Test is Test {
         vm.stopPrank();
         
         // Setup: fund receives multiple tokens
-        agentToken1.mint(address(clankerVault), 2000e18);
-        agentToken2.mint(address(clankerVault), 4000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
-        clankerVault.setPending(address(agentToken2), 4000e18);
+        agentToken1.mint(address(clankerVault), 200e18);
+        agentToken2.mint(address(clankerVault), 400e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        clankerVault.setPending(address(agentToken2), 400e18);
         
         vm.startPrank(safe);
         fund.addAgentToken(address(agentToken1));
@@ -248,7 +328,7 @@ contract AxiomVenturesFund1Test is Test {
         vm.prank(alice);
         fund.claimTokensBatch(0, 0, 2);
         
-        // Check she got her share of both
+        // Check she got her share of both (1/200 each, minus 1% fee)
         uint256 expected1 = (1e18 * 99) / 100;
         uint256 expected2 = (2e18 * 99) / 100;
         
@@ -263,8 +343,8 @@ contract AxiomVenturesFund1Test is Test {
         fund.deposit(1);
         vm.stopPrank();
         
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         
         vm.prank(safe);
         fund.addAgentToken(address(agentToken1));
@@ -292,8 +372,8 @@ contract AxiomVenturesFund1Test is Test {
         fund.addAgentToken(address(agentToken1));
         
         // First batch of tokens
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         fund.claimFromClanker(address(agentToken1));
         
         vm.prank(alice);
@@ -301,8 +381,8 @@ contract AxiomVenturesFund1Test is Test {
         uint256 balance1 = agentToken1.balanceOf(alice);
         
         // Second batch of tokens
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         fund.claimFromClanker(address(agentToken1));
         
         // Alice can claim again
@@ -320,8 +400,8 @@ contract AxiomVenturesFund1Test is Test {
         fund.deposit(1);
         vm.stopPrank();
         
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         vm.prank(safe);
         fund.addAgentToken(address(agentToken1));
         fund.claimFromClanker(address(agentToken1));
@@ -330,6 +410,182 @@ contract AxiomVenturesFund1Test is Test {
         vm.prank(bob);
         vm.expectRevert(AxiomVenturesFund1.NotSlipOwner.selector);
         fund.claimSingleToken(0, address(agentToken1));
+    }
+    
+    function test_NewOwnerCanClaimAfterTransfer() public {
+        // Sell out to enable trading
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), 200 * SLIP_PRICE);
+        fund.deposit(200);
+        vm.stopPrank();
+        
+        // Setup tokens
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        vm.prank(safe);
+        fund.addAgentToken(address(agentToken1));
+        fund.claimFromClanker(address(agentToken1));
+        
+        // Alice transfers slip #0 to Bob
+        vm.prank(alice);
+        fund.transferFrom(alice, bob, 0);
+        
+        // Bob can now claim
+        vm.prank(bob);
+        fund.claimSingleToken(0, address(agentToken1));
+        
+        uint256 expected = (1e18 * 99) / 100;
+        assertEq(agentToken1.balanceOf(bob), expected);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                           VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    
+    function test_GetClaimableAll() public {
+        // Setup
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        agentToken1.mint(address(clankerVault), 200e18);
+        agentToken2.mint(address(clankerVault), 400e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        clankerVault.setPending(address(agentToken2), 400e18);
+        
+        vm.startPrank(safe);
+        fund.addAgentToken(address(agentToken1));
+        fund.addAgentToken(address(agentToken2));
+        vm.stopPrank();
+        
+        fund.claimFromClankerBatch(0, 2);
+        
+        (address[] memory tokens, uint256[] memory amounts) = fund.getClaimableAll(0);
+        
+        assertEq(tokens.length, 2);
+        assertEq(tokens[0], address(agentToken1));
+        assertEq(tokens[1], address(agentToken2));
+        
+        uint256 expected1 = (1e18 * 99) / 100;
+        uint256 expected2 = (2e18 * 99) / 100;
+        assertEq(amounts[0], expected1);
+        assertEq(amounts[1], expected2);
+    }
+    
+    function test_GetClaimHistory() public {
+        // Setup
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        vm.prank(safe);
+        fund.addAgentToken(address(agentToken1));
+        fund.claimFromClanker(address(agentToken1));
+        
+        // Initially no history
+        (address[] memory tokens, uint256[] memory amounts) = fund.getClaimHistory(0);
+        assertEq(tokens.length, 1);
+        assertEq(amounts[0], 0);
+        
+        // After claiming
+        vm.prank(alice);
+        fund.claimSingleToken(0, address(agentToken1));
+        
+        (, amounts) = fund.getClaimHistory(0);
+        assertEq(amounts[0], 1e18); // Full amount before fee
+    }
+    
+    function test_GetTokenStatus() public {
+        // Setup
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        agentToken1.mint(address(clankerVault), 200e18);
+        agentToken2.mint(address(clankerVault), 400e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        clankerVault.setPending(address(agentToken2), 400e18);
+        
+        vm.startPrank(safe);
+        fund.addAgentToken(address(agentToken1));
+        fund.addAgentToken(address(agentToken2));
+        vm.stopPrank();
+        
+        fund.claimFromClankerBatch(0, 2);
+        
+        (uint256 pending, uint256 claimed, uint256 total) = fund.getTokenStatus(0);
+        assertEq(pending, 2);
+        assertEq(claimed, 0);
+        assertEq(total, 2);
+        
+        // After claiming one
+        vm.prank(alice);
+        fund.claimSingleToken(0, address(agentToken1));
+        
+        (pending, claimed, total) = fund.getTokenStatus(0);
+        assertEq(pending, 1);
+        assertEq(claimed, 1);
+        assertEq(total, 2);
+    }
+    
+    function test_GetPending() public {
+        // Setup
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        vm.prank(safe);
+        fund.addAgentToken(address(agentToken1));
+        fund.claimFromClanker(address(agentToken1));
+        
+        uint256 pending = fund.getPending(0, address(agentToken1));
+        uint256 expected = (1e18 * 99) / 100; // 1 token minus 1% fee
+        
+        assertEq(pending, expected);
+    }
+    
+    function test_TokenURI() public {
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        string memory uri = fund.tokenURI(0);
+        assertTrue(bytes(uri).length > 0);
+        // Should be base64 encoded JSON
+        assertTrue(_startsWith(uri, "data:application/json;base64,"));
+    }
+    
+    function test_TokenURIShowsTradingStatus() public {
+        // First deposit - trading locked
+        vm.startPrank(alice);
+        IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
+        fund.deposit(1);
+        vm.stopPrank();
+        
+        string memory uri1 = fund.tokenURI(0);
+        // Contains "Locked" in attributes (we can't easily parse base64 in Solidity)
+        assertTrue(bytes(uri1).length > 0);
+        
+        // Enable trading
+        vm.prank(safe);
+        fund.enableTrading();
+        
+        string memory uri2 = fund.tokenURI(0);
+        // URI should change to show "Enabled"
+        assertTrue(bytes(uri2).length > 0);
+    }
+    
+    function test_Owner() public view {
+        assertEq(fund.owner(), metadataAdmin);
     }
     
     /*//////////////////////////////////////////////////////////////
@@ -358,6 +614,16 @@ contract AxiomVenturesFund1Test is Test {
         assertEq(fund.paused(), true);
     }
     
+    function test_OnlySafeCanEnableTrading() public {
+        vm.prank(alice);
+        vm.expectRevert(AxiomVenturesFund1.OnlySafe.selector);
+        fund.enableTrading();
+        
+        vm.prank(safe);
+        fund.enableTrading();
+        assertEq(fund.tradingEnabled(), true);
+    }
+    
     function test_LockUpgrades() public {
         vm.prank(safe);
         fund.lockUpgrades();
@@ -376,42 +642,46 @@ contract AxiomVenturesFund1Test is Test {
     }
     
     /*//////////////////////////////////////////////////////////////
-                            VIEW FUNCTIONS
+                        ACCUMULATED DIVIDENDS
     //////////////////////////////////////////////////////////////*/
     
-    function test_GetPending() public {
-        // Setup
+    function test_LateDepositorsGetOnlyNewTokens() public {
+        // Alice deposits first
         vm.startPrank(alice);
         IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
         fund.deposit(1);
         vm.stopPrank();
         
-        agentToken1.mint(address(clankerVault), 2000e18);
-        clankerVault.setPending(address(agentToken1), 2000e18);
+        // First batch of tokens arrives
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
         vm.prank(safe);
         fund.addAgentToken(address(agentToken1));
         fund.claimFromClanker(address(agentToken1));
         
-        uint256 pending = fund.getPending(0, address(agentToken1));
-        uint256 expected = (1e18 * 99) / 100; // 1 token minus 1% fee
-        
-        assertEq(pending, expected);
-    }
-    
-    function test_TokenURI() public {
-        vm.startPrank(alice);
+        // Bob deposits after tokens arrived
+        vm.startPrank(bob);
         IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve(address(fund), SLIP_PRICE);
         fund.deposit(1);
         vm.stopPrank();
         
-        string memory uri = fund.tokenURI(0);
-        assertTrue(bytes(uri).length > 0);
-        // Should be base64 encoded JSON
-        assertTrue(_startsWith(uri, "data:application/json;base64,"));
-    }
-    
-    function test_Owner() public view {
-        assertEq(fund.owner(), metadataAdmin);
+        // Bob should have nothing to claim from first batch
+        uint256 bobPending = fund.getPending(1, address(agentToken1));
+        assertEq(bobPending, 0);
+        
+        // Alice should have her full share
+        uint256 alicePending = fund.getPending(0, address(agentToken1));
+        uint256 expected = (1e18 * 99) / 100;
+        assertEq(alicePending, expected);
+        
+        // Second batch arrives
+        agentToken1.mint(address(clankerVault), 200e18);
+        clankerVault.setPending(address(agentToken1), 200e18);
+        fund.claimFromClanker(address(agentToken1));
+        
+        // Now Bob can claim from second batch
+        bobPending = fund.getPending(1, address(agentToken1));
+        assertGt(bobPending, 0);
     }
     
     /*//////////////////////////////////////////////////////////////

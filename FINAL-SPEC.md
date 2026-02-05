@@ -1,22 +1,32 @@
-# Axiom Ventures Fund 1 — Final Contract Specification
+# Axiom Ventures Fund 1 — Final Contract Specification (v2)
 
-## Contract Overview
+## Overview
 **Name:** AxiomVenturesFund1  
-**Type:** ERC-721 + UUPS Upgradeable  
-**Purpose:** LP slips representing 1/2000th ownership in agent token portfolio
+**Type:** ERC-721 + ERC-2981 + UUPS Upgradeable  
+**Purpose:** LP slips representing 1/200th ownership in agent token portfolio
 
 ---
 
-## Parameters
+## Fund Parameters
 
 | Parameter | Value |
 |-----------|-------|
-| Total Slips | 2,000 |
-| Public Slips | 1,980 |
-| Fund Manager Slips | 20 (1%) |
-| Slip Price | 1,000 USDC |
-| Distribution Fee | 1% |
+| Total Slips | 200 |
+| Slip Price | $1,010 USDC |
+| Total Raise | $202,000 |
+| Entry FDV | $100,000 per agent |
+| Agents | 20 |
 | Network | Base Mainnet |
+
+---
+
+## Fee Structure
+
+| Fee | Rate | Destination | Purpose |
+|-----|------|-------------|---------|
+| Deposit Fee | 1% | Safe | Buy & burn $AXIOM |
+| Distribution Fee | 1% | Safe | Operating costs |
+| Royalty (secondary) | 2.5% | Safe | 50% burn, 50% operating |
 
 ---
 
@@ -31,29 +41,39 @@
 
 ---
 
+## Trading Lock
+
+- **Default:** Trading DISABLED
+- **Enabled:** Automatically when all 200 slips sold
+- **Override:** Safe can enable early via `enableTrading()`
+- **Safe bypass:** Safe can always transfer (for distributions)
+
+---
+
 ## Deposit Phase
 
 ### Logic
 1. LP calls `deposit(count)` with USDC approval
-2. Contract transfers `count × 1000 USDC` to Safe
+2. Contract transfers `count × 1,010 USDC` to Safe
 3. Contract mints `count` NFT slips to LP
-4. Every 99 public slips minted → auto-mint 1 slip to Safe (fund manager fee)
-
-### Math Check
-- 99 public → 1 FM = 100 total (repeat 20 times)
-- 1,980 public → 20 FM = 2,000 total ✓
+4. Event emits fee amount (1% = $10.10/slip for burns)
 
 ### Constraints
 - `depositsOpen` must be true
-- Cannot exceed 1,980 public slips
+- Cannot exceed 200 slips total
 - USDC approval required
+
+### Auto-Sellout
+When `totalMinted == 200`:
+- `tradingEnabled` set to true
+- `TradingEnabled` event emitted
 
 ---
 
 ## Clanker Integration
 
 ### Setting Beneficiary
-When launching agents via Bankr, set `VaultExtensionData.admin` = our contract address
+When launching agents via Bankr, set `VaultExtensionData.admin` = contract address
 
 ### Claim Function (Permissionless)
 ```solidity
@@ -61,52 +81,69 @@ function claimFromClanker(address token) external
 ```
 - Anyone can call
 - Calls `IClankerVault(clankerVault).claim(token)`
-- Tokens flow from Clanker Vault → our contract
+- Tokens flow from Clanker Vault → contract
 - Tracks `totalReceived[token] += received`
+- Updates `accumulatedPerShare[token]` (dividend pattern)
 - Adds token to `agentTokens[]` if new
 
 ### Batch Claim
 ```solidity
-function claimAllFromClanker() external
+function claimFromClankerBatch(uint256 startIdx, uint256 count) external
 ```
-- Loops through all known `agentTokens`
-- Calls `claimFromClanker()` for each
-- Gas intensive but convenient
+- Claims up to `count` tokens starting at index
+- MAX_BATCH_SIZE = 50
 
 ---
 
-## LP Token Claims
+## LP Token Claims (Accumulated Dividends)
 
 ### Entitlement Calculation
 ```
-entitlement = totalReceived[token] / 2000
-owed = entitlement - claimed[slipId][token]
-fee = owed / 100  (1%)
-payout = owed - fee
+pending = (accumulatedPerShare[token] - rewardDebt[slipId][token]) / PRECISION
+fee = pending * 1%
+payout = pending - fee
 ```
+
+### Key Properties
+- ✅ Late depositors don't get retroactive rewards
+- ✅ Fair regardless of claim timing
+- ✅ No precision loss (1e18 scaling)
+- ✅ Handles partial vesting (claim now, claim more later)
 
 ### Single Token Claim
 ```solidity
 function claimSingleToken(uint256 slipId, address token) external
 ```
-- Only NFT owner can call
-- Calculates owed amount
-- Sends 1% to Safe
-- Sends 99% to caller
-- Updates `claimed[slipId][token]`
 
 ### Batch Claim
 ```solidity
-function claimAllTokens(uint256 slipId) external
+function claimTokensBatch(uint256 slipId, uint256 startIdx, uint256 count) external
 ```
-- Loops through all `agentTokens`
-- Claims each where owed > 0
 
-### Key Properties
-- ✅ Fair regardless of claim timing
-- ✅ Handles partial vesting (claim now, claim more later)
-- ✅ No race conditions (fixed /2000 divisor)
-- ✅ No sweep — tokens belong to NFT holder forever
+---
+
+## View Functions (For Secondary Market)
+
+### Get All Claimable
+```solidity
+function getClaimableAll(uint256 slipId) external view 
+    returns (address[] memory tokens, uint256[] memory amounts)
+```
+
+### Get Claim History
+```solidity
+function getClaimHistory(uint256 slipId) external view 
+    returns (address[] memory tokens, uint256[] memory amounts)
+```
+
+### Get Token Status
+```solidity
+function getTokenStatus(uint256 slipId) external view returns (
+    uint256 numPendingTokens,
+    uint256 numClaimedTokens,
+    uint256 totalAgentTokens
+)
+```
 
 ---
 
@@ -115,10 +152,12 @@ function claimAllTokens(uint256 slipId) external
 ### Safe Only
 | Function | Purpose |
 |----------|---------|
-| `setClankerVault(address)` | Update if Clanker changes |
+| `setClankerVault(address)` | Update vault address |
 | `setMetadataAdmin(address)` | Rotate OpenSea admin |
 | `setDepositsOpen(bool)` | Open/close deposits |
-| `addAgentToken(address)` | Manually add token if needed |
+| `setPaused(bool)` | Emergency pause |
+| `enableTrading()` | Enable trading early |
+| `addAgentToken(address)` | Manually add token |
 | `lockUpgrades()` | Permanently disable upgrades |
 
 ### Metadata Admin Only
@@ -126,97 +165,63 @@ function claimAllTokens(uint256 slipId) external
 |----------|---------|
 | `setContractURI(string)` | Update collection metadata |
 
-### UUPS
-| Function | Purpose |
-|----------|---------|
-| `_authorizeUpgrade()` | Safe only, respects `upgradesLocked` |
-
----
-
-## View Functions
-
-| Function | Returns |
-|----------|---------|
-| `owner()` | metadataAdmin (for OpenSea) |
-| `tokenURI(tokenId)` | On-chain SVG + JSON |
-| `contractURI()` | Collection metadata |
-| `getAgentTokens()` | All tracked tokens |
-| `getClaimable(slipId)` | (tokens[], amounts[]) |
-| `totalReceived(token)` | Cumulative received |
-| `claimed(slipId, token)` | Amount claimed |
-
 ---
 
 ## On-Chain SVG
 
 ### Design
 - Dark background (#0a0a0a)
-- "AXIOM VENTURES" / "Fund 1 · Base"
+- "AXIOM VENTURES" / "Fund 1"
 - Large slip number in lime (#84cc16)
-- "1 of 2,000" / "$1,000 USDC"
+- "1 of 200" / "$1,010 USDC"
+- "$100K FDV Entry" / "20 AI Agents"
+- Trading status badge (LOCKED/TRADEABLE)
 
-### Generation
-- `_generateSVG(tokenId)` builds SVG string
-- Base64 encoded in tokenURI
-- ~2KB per image, acceptable gas cost
-
----
-
-## Storage Layout
-
-```solidity
-// Slot 0-50: OpenZeppelin upgradeable base contracts
-
-// Custom storage
-address public safe;
-address public metadataAdmin;
-address public clankerVault;
-string public contractMetadataURI;
-
-bool public depositsOpen;
-bool public upgradesLocked;
-
-uint256 public totalMinted;
-uint256 public publicSlipsMinted;
-uint256 public fundManagerSlipsMinted;
-
-address[] public agentTokens;
-mapping(address => bool) public isAgentToken;
-mapping(address => uint256) public totalReceived;
-mapping(uint256 => mapping(address => uint256)) public claimed;
-
-// Storage gap for future upgrades
-uint256[40] private __gap;
-```
+### Dynamic Attributes
+- Pending Claims count
+- Claimed Tokens count
+- Trading status
 
 ---
 
-## Security Checklist
+## Royalties (EIP-2981)
+
+- **Rate:** 2.5% (250 basis points)
+- **Receiver:** Safe
+- **Implementation:** ERC2981Upgradeable
+- **Manual split:** Safe executes burns with 50%
+
+---
+
+## Security
 
 - [x] ReentrancyGuard on all state-changing externals
 - [x] Checks-effects-interactions pattern
-- [x] No sweep function (tokens belong to NFT holders)
 - [x] UUPS with onlySafe authorization
 - [x] Lockable upgrades (one-way)
 - [x] Separate metadataAdmin (low privilege)
-- [x] Fixed /2000 divisor (no race conditions)
+- [x] Accumulated dividends (no precision loss)
+- [x] Batch pagination (MAX_BATCH_SIZE=50)
+- [x] Trading lock until sold out
 - [x] Storage gap for upgrades
 - [x] _disableInitializers() in constructor
-- [x] Input validation on all parameters
 
 ---
 
 ## Events
 
 ```solidity
-event Deposited(address indexed depositor, uint256 count, uint256 firstSlipId);
-event FundManagerSlipMinted(uint256 slipId);
+event Deposited(address indexed depositor, uint256 count, uint256 firstSlipId, uint256 feeAmount);
 event TokensClaimedFromClanker(address indexed token, uint256 amount);
 event TokenClaimed(uint256 indexed slipId, address indexed token, uint256 amount, uint256 fee);
 event DepositsOpenChanged(bool open);
+event PausedChanged(bool paused);
+event TradingEnabled();
 event ClankerVaultUpdated(address oldVault, address newVault);
 event MetadataAdminUpdated(address oldAdmin, address newAdmin);
+event AgentTokenAdded(address token);
 event UpgradesPermanentlyLocked();
+event ClankerClaimFailed(address token, bytes reason);
 ```
 
 ---
@@ -225,27 +230,28 @@ event UpgradesPermanentlyLocked();
 
 ```
 1. DEPLOY
-   └── Initialize with Safe + metadataAdmin
-   └── depositsOpen = true
+   └── Initialize with Safe + metadataAdmin + clankerVault
+   └── depositsOpen = true, tradingEnabled = false
 
 2. DEPOSIT PHASE
-   └── LPs deposit USDC, receive NFTs
-   └── FM slips auto-minted every 99 public
-   └── Ends when 1,980 public sold OR manually closed
+   └── LPs deposit $1,010 USDC, receive NFT slips
+   └── 1% ($10.10) goes to burn fund
+   └── Ends when 200 sold OR manually closed
+   └── Trading auto-enables on sellout
 
 3. INVESTMENT PHASE
    └── Safe invests in agents via Bankr
    └── Contract address set as beneficiary
-   └── 100 agents × $20K = $2M deployed
+   └── 20 agents × $10K = $200K deployed
 
 4. VESTING PHASE
    └── Tokens vest in Clanker (2wk cliff + 3mo linear)
-   └── Anyone calls claimAllFromClanker() periodically
-   └── Tokens accumulate in contract
+   └── Anyone calls claimFromClanker() periodically
+   └── Accumulated dividends updated
 
 5. CLAIM PHASE
-   └── Slip holders call claimAllTokens(slipId)
-   └── Receive 1/2000th of each token (minus 1% fee)
+   └── Slip holders call claimSingleToken/claimTokensBatch
+   └── Receive 1/200th of each token (minus 1% fee)
    └── Can claim anytime, as often as needed
 
 6. MATURITY
@@ -261,26 +267,23 @@ event UpgradesPermanentlyLocked();
 | Operation | Estimated Gas |
 |-----------|---------------|
 | Deploy (proxy + impl) | ~4M |
-| deposit(1) | ~180K |
-| deposit(10) | ~900K |
-| claimFromClanker(1 token) | ~100K |
-| claimAllFromClanker(100 tokens) | ~3M |
-| claimSingleToken | ~80K |
-| claimAllTokens(100 tokens) | ~3M |
+| deposit(1) | ~160K |
+| deposit(10) | ~400K |
+| claimFromClanker(1 token) | ~230K |
+| claimFromClankerBatch(20) | ~1M |
+| claimSingleToken | ~100K |
+| claimTokensBatch(20) | ~700K |
 
 ---
 
-## Dependencies
+## Test Coverage
 
-```
-@openzeppelin/contracts-upgradeable ^5.0.0
-├── ERC721Upgradeable
-├── OwnableUpgradeable  
-├── UUPSUpgradeable
-├── ReentrancyGuardUpgradeable
-└── ERC2981Upgradeable
-
-solady
-├── Base64
-└── LibString
-```
+34 tests covering:
+- Initialization
+- Deposits & fees
+- Trading lock mechanics
+- Clanker claims
+- LP claims & dividends
+- View functions
+- Admin functions
+- Late depositor fairness
