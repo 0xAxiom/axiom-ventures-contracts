@@ -1,86 +1,132 @@
-# Axiom Ventures
+# Axiom Ventures Contracts
 
-AI agent seed fund on Base. $20K into 100 agents at launch. LPs get diversified token exposure at seed pricing.
+Smart contracts for Axiom Ventures — an AI agent seed fund on Base.
 
-## How It Works
+## Overview
 
-1. Fund raises $2M in $1,000 LP slips
-2. Agents apply and pass due diligence
-3. Approved agents launch their token via Bankr
-4. At launch: 20% of token supply auto-locks in Bankr's vault (2-week cliff + 3-month linear vest), $20K USDC goes to the agent
-5. As tokens vest, LPs claim their pro-rata share
+Axiom Ventures invests $20K into 100 AI agents at token launch in exchange for 20% of their token supply. LPs participate via ERC-721 "slip" NFTs, each representing 1/2000th of the fund's token portfolio.
 
-## Deal Terms
+## Contracts
 
-| Term | Value |
-|------|-------|
-| Investment per agent | $20,000 USDC |
-| Token allocation | 20% of supply |
-| Implied FDV at entry | $100,000 |
-| Token cliff | 2 weeks |
-| Token vesting | 3 months linear |
-| Fund size | $2,000,000 |
-| Number of agents | 100 |
-| LP minimum | $1,000 (1 slip) |
-| Total slips | 2,000 |
-| Deposit fee | 1% |
-| Distribution fee | 1% |
+### v4 — Fund 1 (Current)
 
-## Why It Works
+| Contract | Description |
+|----------|-------------|
+| `AxiomVenturesFund1.sol` | ERC-721 LP slips with integrated token distribution |
 
-- **Agents** get $20K without selling tokens. Keep all creator fees.
-- **LPs** get diversified seed exposure to 100 vetted agents at $100K FDV. $1K minimum.
-- **Fund** does rigorous DD because we eat our own losses.
-- **Everyone** benefits from token appreciation. Aligned incentives.
+**Key Features:**
+- **ERC-721 LP Slips:** Each slip is an NFT, tradeable on OpenSea
+- **UUPS Upgradeable:** Can be upgraded by Safe multi-sig, then permanently locked
+- **Accumulated Dividends:** MasterChef-style token distribution (no precision loss)
+- **Permissionless Claims:** Anyone can trigger Clanker vault claims
+- **On-chain SVG:** NFT artwork stored entirely on-chain
 
-Entry at $100K implied FDV. DD targets agents hitting $1M+ in 3 months. 10x minimum thesis per winner.
+### Architecture
 
-## Token Vesting
+```
+LP deposits $1,000 USDC
+        │
+        ▼
+┌─────────────────────────────────────────────────┐
+│           AxiomVenturesFund1                    │
+│                                                 │
+│  • Mints ERC-721 slip to LP                    │
+│  • Forwards USDC to Safe multi-sig             │
+│  • Auto-mints 1 FM slip per 99 public          │
+│  • Tracks accumulated dividends per token       │
+│  • Distributes tokens to slip holders          │
+└─────────────────────────────────────────────────┘
+        │                           │
+        ▼                           ▼
+   Safe Multi-sig              Clanker Vault
+   (holds USDC,                (vests agent
+    invests in agents)          tokens)
+```
 
-Handled natively by Bankr's Clanker Vault (`0x8e845ead15737bf71904a30bddd3aee76d6adf6c`). Battle-tested with 1,000+ transactions on Base. Immutable vesting schedules — fund cannot change terms or seize tokens early.
+### Addresses
 
-## Contract Addresses
-
-### Fund Infrastructure
-
-| Contract | Address | Status |
-|----------|---------|--------|
-| AxiomVault (ERC-4626) | `0xac40cc75f4227417b66ef7cd0cef1da439493255` | Deployed |
-| Safe Multisig (2/3) | `0x5766f573Cc516E3CA0D05a4848EF048636008271` | Active |
-| Clanker Vault (Bankr) | `0x8e845ead15737bf71904a30bddd3aee76d6adf6c` | External |
-| TokenDistributor | TBD | Pending |
-| DealRegistry | TBD | Pending |
-
-### Legacy Contracts (V1/V2)
-
-Previous contract versions (EscrowFactory, PitchRegistry, AgentRegistry, DDAttestation, InvestmentRouter, FundTransparency) were deployed during early development. They remain on-chain but are not used in the current fund model.
+| Contract | Address |
+|----------|---------|
+| AxiomVenturesFund1 | *Not yet deployed* |
+| Safe Multi-sig | `0x5766f573Cc516E3CA0D05a4848EF048636008271` |
+| Metadata Admin | `0xa898136F9a6071cef30aF26905feFF1FD1714593` |
+| Clanker Vault | `0x8e845ead15737bf71904a30bddd3aee76d6adf6c` |
 
 ## Development
 
+### Prerequisites
+
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- Node.js 18+
+
+### Install
+
 ```bash
-# Install dependencies
+git clone https://github.com/0xAxiom/axiom-ventures-contracts.git
+cd axiom-ventures-contracts
 forge install
-
-# Build
-forge build
-
-# Test
-forge test
-
-# Test specific suite
-forge test --match-path "test/v3/*"
 ```
 
-## Architecture
+### Build
 
-See [FUND-MODEL.md](./FUND-MODEL.md) for the complete fund model, return math, and technical architecture.
+```bash
+forge build
+```
 
-## Links
+### Test
 
-- **Website:** [axiomventures.xyz](https://axiomventures.xyz)
-- **Twitter:** [@AxiomBot](https://twitter.com/AxiomBot)
-- **Fund Model:** [FUND-MODEL.md](./FUND-MODEL.md)
+```bash
+# All tests
+forge test
+
+# v4 tests only
+forge test --match-path test/v4/*.sol -vv
+
+# With gas report
+forge test --gas-report
+```
+
+### Deploy
+
+```bash
+# Deploy to Base mainnet
+forge script script/DeployFund1.s.sol --rpc-url base --broadcast --verify
+```
+
+## Fund Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Total Slips | 2,000 |
+| Public Slips | 1,980 |
+| Fund Manager Slips | 20 (1%) |
+| Slip Price | $1,000 USDC |
+| Max Raise | $1,980,000 |
+| Distribution Fee | 1% |
+| Agents Funded | 100 |
+| Investment per Agent | $20,000 |
+
+## Security
+
+- [x] Reentrancy protection
+- [x] Access control (Safe + MetadataAdmin)
+- [x] UUPS with lockable upgrades
+- [x] Accumulated dividends (no precision loss)
+- [x] Batch pagination (gas limit protection)
+- [x] Emergency pause
+- [x] Comprehensive test suite (22 tests)
+
+### Audits
+
+- `audits/axiom-fund1-security-audit.md` — Initial audit
+- `audits/axiom-fund1-audit-v2.md` — Post-fix review
 
 ## License
 
 MIT
+
+## Links
+
+- Website: [axiomventures.xyz](https://axiomventures.xyz)
+- Twitter: [@AxiomBot](https://twitter.com/AxiomBot)
+- GitHub: [github.com/0xAxiom](https://github.com/0xAxiom)
