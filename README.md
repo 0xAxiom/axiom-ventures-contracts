@@ -1,147 +1,85 @@
 # Axiom Ventures
 
-The first AI-agent-managed venture fund on Base, featuring on-chain due diligence, milestone-based escrows, and complete transparency for limited partners.
+AI agent seed fund on Base. $20K into 100 agents at launch. LPs get diversified token exposure at seed pricing.
 
-## Overview
+## How It Works
 
-Axiom Ventures is a fully autonomous venture fund that evaluates, invests in, and manages AI agent projects. The infrastructure operates across two contract layers: V1 handles fund operations and escrow management, while V2 adds agent identity verification and on-chain due diligence scoring.
+1. Fund raises $2M in $1,000 LP slips
+2. Agents apply and pass due diligence
+3. Approved agents launch their token via Bankr
+4. At launch: 20% of token supply auto-locks in Bankr's vault (2-week cliff + 3-month linear vest), $20K USDC goes to the agent
+5. As tokens vest, LPs claim their pro-rata share
 
-## Architecture
+## Deal Terms
 
-**V1 Layer** — Core fund operations
-- Fund management via ERC-4626 USDC vault
-- Milestone-based investment escrows
-- Pitch submission and tracking registry
+| Term | Value |
+|------|-------|
+| Investment per agent | $20,000 USDC |
+| Token allocation | 20% of supply |
+| Implied FDV at entry | $100,000 |
+| Token cliff | 2 weeks |
+| Token vesting | 3 months linear |
+| Fund size | $2,000,000 |
+| Number of agents | 100 |
+| LP minimum | $1,000 (1 slip) |
+| Total slips | 2,000 |
+| Deposit fee | 1% |
+| Distribution fee | 1% |
 
-**V2 Layer** — Verification infrastructure  
-- Agent identity management via ERC-721 NFTs
-- On-chain due diligence attestations
-- Investment orchestration and LP transparency
+## Why It Works
+
+- **Agents** get $20K without selling tokens. Keep all creator fees.
+- **LPs** get diversified seed exposure to 100 vetted agents at $100K FDV. $1K minimum.
+- **Fund** does rigorous DD because we eat our own losses.
+- **Everyone** benefits from token appreciation. Aligned incentives.
+
+Entry at $100K implied FDV. DD targets agents hitting $1M+ in 3 months. 10x minimum thesis per winner.
+
+## Token Vesting
+
+Handled natively by Bankr's Clanker Vault (`0x8e845ead15737bf71904a30bddd3aee76d6adf6c`). Battle-tested with 1,000+ transactions on Base. Immutable vesting schedules — fund cannot change terms or seize tokens early.
 
 ## Contract Addresses
 
-### V1 Contracts (Immutable)
+### Fund Infrastructure
 
-| Contract | Address | Basescan |
-|----------|---------|----------|
-| AxiomVault | `0xac40cc75f4227417b66ef7cd0cef1da439493255` | [View](https://basescan.org/address/0xac40cc75f4227417b66ef7cd0cef1da439493255) |
-| EscrowFactory | `0xd33df145b5febc10d5cf3b359c724ba259bf7077` | [View](https://basescan.org/address/0xd33df145b5febc10d5cf3b359c724ba259bf7077) |
-| PitchRegistry | `0xcb83fa753429870fc3e233a1175cb99e90bde449` | [View](https://basescan.org/address/0xcb83fa753429870fc3e233a1175cb99e90bde449) |
-| MilestoneEscrow | Template | [Implementation](https://basescan.org/address/0xac40cc75f4227417b66ef7cd0cef1da439493255) |
+| Contract | Address | Status |
+|----------|---------|--------|
+| AxiomVault (ERC-4626) | `0xac40cc75f4227417b66ef7cd0cef1da439493255` | Deployed |
+| Safe Multisig (2/3) | `0x5766f573Cc516E3CA0D05a4848EF048636008271` | Active |
+| Clanker Vault (Bankr) | `0x8e845ead15737bf71904a30bddd3aee76d6adf6c` | External |
+| TokenDistributor | TBD | Pending |
+| DealRegistry | TBD | Pending |
 
-### V2 Contracts (Verification Layer)
+### Legacy Contracts (V1/V2)
 
-| Contract | Address | Basescan |
-|----------|---------|----------|
-| AgentRegistry | `0x28BC26cC963238A0Fb65Afa334cc84100287De31` | [View](https://basescan.org/address/0x28BC26cC963238A0Fb65Afa334cc84100287De31) |
-| DDAttestation | `0xAFB554111B26E2074aE686BaE77991fA5dcBe149` | [View](https://basescan.org/address/0xAFB554111B26E2074aE686BaE77991fA5dcBe149) |
-| InvestmentRouter | `0x23DA1E3B5b95d1d4DF24973859559BDbBDa1f8a5` | [View](https://basescan.org/address/0x23DA1E3B5b95d1d4DF24973859559BDbBDa1f8a5) |
-| FundTransparency | `0xC95D74F81C405A08Ed40FdF268e7d958a2F6896e` | [View](https://basescan.org/address/0xC95D74F81C405A08Ed40FdF268e7d958a2F6896e) |
-
-### Fund Management
-
-| Component | Address | Description |
-|-----------|---------|-------------|
-| Safe Multisig | `0x5766f573Cc516E3CA0D05a4848EF048636008271` | 2/3 threshold for fund operations |
-
-## Trust Model
-
-| Component | Trust Level | Explanation |
-|-----------|------------|-------------|
-| Agent Identity | Trustless | On-chain NFT, verifiable by anyone |
-| Pitch Submission | Trustless | On-chain, gated by identity |
-| DD Scoring | Semi-trusted | Oracle posts score, but report on IPFS is verifiable |
-| Investment Decision | Centralized | Owner decides (standard VC model) |
-| Milestone Release | Centralized | Owner approves (could add oracle later) |
-| Fund Accounting | Trustless | All on-chain via ERC-4626 + escrows |
-| LP Transparency | Trustless | FundTransparency reads all contracts |
+Previous contract versions (EscrowFactory, PitchRegistry, AgentRegistry, DDAttestation, InvestmentRouter, FundTransparency) were deployed during early development. They remain on-chain but are not used in the current fund model.
 
 ## Development
-
-### Build and Test
 
 ```bash
 # Install dependencies
 forge install
 
-# Build contracts
+# Build
 forge build
 
-# Run test suite
+# Test
 forge test
 
-# Run with verbose output
-forge test -vvv
-
-# Run specific test
-forge test --match-contract AxiomVaultTest
+# Test specific suite
+forge test --match-path "test/v3/*"
 ```
 
-### Contract Verification
+## Architecture
 
-Verify deployed contracts on Basescan:
-
-```bash
-# Verify a contract
-forge verify-contract \
-  --chain-id 8453 \
-  --constructor-args $(cast abi-encode "constructor(address,string,string)" "0xUSDCAddress" "Axiom Vault" "AXV") \
-  --etherscan-api-key $BASESCAN_API_KEY \
-  0xContractAddress \
-  src/AxiomVault.sol:AxiomVault
-
-# Verify with standard JSON input
-forge verify-contract \
-  --chain-id 8453 \
-  --compiler-version v0.8.24 \
-  --etherscan-api-key $BASESCAN_API_KEY \
-  0xContractAddress \
-  src/Contract.sol:Contract
-```
-
-## Audit Results
-
-**Overall Score:** 7.5/10
-
-The contracts have been audited with focus on fund safety, escrow logic, and access controls. V1 contracts are immutable and battle-tested. V2 contracts implement additional verification layers without compromising the core fund infrastructure.
-
-**Key Findings:**
-- No critical vulnerabilities in fund management
-- Milestone escrow logic secure
-- Access control patterns properly implemented
-- Pagination optimizations recommended for large-scale operations
-
-## Investment Pipeline
-
-1. **Agent Registration** — Agents mint identity NFTs via AgentRegistry
-2. **Pitch Submission** — Verified agents submit pitches through InvestmentRouter
-3. **Due Diligence** — Automated DD scoring with on-chain attestations
-4. **Investment Decision** — Fund manager approves qualifying pitches
-5. **Escrow Creation** — Milestone-based escrows automatically created
-6. **Fund Release** — Progressive funding as milestones are achieved
-7. **LP Transparency** — Complete audit trail via FundTransparency
-
-## File Structure
-
-```
-src/
-  AxiomVault.sol          # ERC-4626 USDC vault
-  EscrowFactory.sol       # Creates milestone escrows
-  MilestoneEscrow.sol     # Milestone-based fund release
-  PitchRegistry.sol       # Pitch submission and tracking
-  v2/
-    AgentRegistry.sol     # Agent identity NFTs
-    DDAttestation.sol     # On-chain DD scores
-    InvestmentRouter.sol  # Orchestration layer
-    FundTransparency.sol  # LP audit dashboard
-```
+See [FUND-MODEL.md](./FUND-MODEL.md) for the complete fund model, return math, and technical architecture.
 
 ## Links
 
 - **Website:** [axiomventures.xyz](https://axiomventures.xyz)
 - **Twitter:** [@AxiomBot](https://twitter.com/AxiomBot)
-- **Base Network:** [Base L2](https://base.org)
-- **Safe Multisig:** [Basescan](https://basescan.org/address/0x5766f573Cc516E3CA0D05a4848EF048636008271)
+- **Fund Model:** [FUND-MODEL.md](./FUND-MODEL.md)
 
 ## License
 
